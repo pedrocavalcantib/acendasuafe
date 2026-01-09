@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "404050673814",
+    "project_id": "acenda-sua-fe",
+    "storage_bucket": "acenda-sua-fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:404050673814:android:60a5fc1cfbc2b13df142b7",
+        "android_client_info": {
+          "package_name": "com.pedrocavalcantib.acendaapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCOv2RXU_nnM6hAatXfLaZwsXuCXO1o7gc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
