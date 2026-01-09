@@ -1,9 +1,10 @@
 // scripts/sendDailyReminders.mjs
 
 import { createClient } from '@supabase/supabase-js';
-import * as Expo from 'expo-server-sdk';
+import expoPkg from 'expo-server-sdk';
 
-// 1) Ler variáveis de ambiente (você configura no Railway)
+const { Expo } = expoPkg;
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
