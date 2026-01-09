@@ -1,7 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
-import { Expo } from 'expo-server-sdk';
+// scripts/sendDailyReminders.mjs
 
-// 1) Ler variáveis de ambiente (você vai configurar no Railway)
+import { createClient } from '@supabase/supabase-js';
+import * as Expo from 'expo-server-sdk';
+
+// 1) Ler variáveis de ambiente (você configura no Railway)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
@@ -13,49 +15,103 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const expo = new Expo();
 
-// 2) Função pra pegar o horário atual no formato "HH:MM"
-function getCurrentHHMM() {
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`; // ex: "08:00"
+// --- Helpers de horário -----------------------------------------------------
+
+// Retorna "HH:MM" no timezone atual do processo (se você setar TZ no Railway, ele usa isso)
+function getCurrentHHMM(date = new Date()) {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const hhmm = `${h}:${m}`;
+  console.log(`[TIME] Agora é ${hhmm}`);
+  return hhmm;
 }
+
+// Converte "HH:MM" para minutos desde 00:00
+function toMinutes(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Diferença em minutos entre dois horários "HH:MM", tratando virada de dia
+// diff = now - target (em minutos), ajustado para faixa [0, 1440)
+function diffMinutes(nowHHMM, targetHHMM) {
+  const DAY_MINUTES = 24 * 60;
+  const now = toMinutes(nowHHMM);
+  const target = toMinutes(targetHHMM);
+  let diff = now - target;
+  if (diff < 0) diff += DAY_MINUTES; // trata casos tipo 00:02 vs 23:59
+  return diff;
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const hhmm = getCurrentHHMM();
-  console.log('Rodando worker de push. Horário atual:', hhmm);
+  console.log('[PUSH] Rodando worker de push. Horário atual:', hhmm);
 
-  // 3) Buscar usuários cujo reminderTime == horário atual
+  // 2) Buscar todos os registros com notificationTime e pushToken
   const { data, error } = await supabase
-    .from('kv_store_258bafe3')
-    .select('value');
+    .from('kv_store_258bafe3') // sua tabela
+    .select('key, value');
 
   if (error) {
-    console.error('Erro ao buscar dados no Supabase:', error);
+    console.error('[PUSH] Erro ao buscar dados no Supabase:', error);
     return;
   }
 
   if (!data || data.length === 0) {
-    console.log('Nenhum registro encontrado na tabela.');
+    console.log('[PUSH] Nenhum registro encontrado na tabela.');
     return;
   }
 
-  // Filtra quem tem reminderTime igual ao horário atual
+  // 3) Filtrar quem tem notificationTime dentro da janela de 5 minutos
+  //    e possui pushToken válido
+  const WINDOW_MINUTES = 5;
+
   const usersToNotify = data.filter((row) => {
     const v = row.value || {};
-    return v.reminderTime === hhmm && !!v.pushToken;
+
+    const notificationTime = v.notificationTime;
+    const pushToken = v.pushToken;
+
+    if (!notificationTime || !pushToken) {
+      return false;
+    }
+
+    const diff = diffMinutes(hhmm, notificationTime);
+
+    // Considera o usuário se o horário dele está entre
+    // (now - 5 minutos) e now, inclusive now.
+    const dentroDaJanela = diff >= 0 && diff < WINDOW_MINUTES;
+
+    if (dentroDaJanela) {
+      console.log(
+        `[PUSH] User ${row.key} está na janela. notificationTime=${notificationTime}, diff=${diff}min`
+      );
+    }
+
+    return dentroDaJanela;
   });
 
-  console.log(`Encontrados ${usersToNotify.length} usuários para notificar.`);
+  console.log(
+    `[PUSH] Encontrados ${usersToNotify.length} usuários para notificar.`
+  );
 
+  if (usersToNotify.length === 0) {
+    console.log('[PUSH] Nenhuma mensagem para enviar neste minuto.');
+    return;
+  }
+
+  // 4) Montar mensagens
   const messages = [];
 
   for (const row of usersToNotify) {
-    const { pushToken } = row.value || {};
+    const v = row.value || {};
+    const pushToken = v.pushToken;
 
     if (!pushToken) continue;
     if (!Expo.isExpoPushToken(pushToken)) {
-      console.log('Token inválido, ignorando:', pushToken);
+      console.log('[PUSH] Token inválido, ignorando:', pushToken);
       continue;
     }
 
@@ -69,28 +125,33 @@ async function main() {
   }
 
   if (messages.length === 0) {
-    console.log('Nenhuma mensagem para enviar neste minuto.');
+    console.log('[PUSH] Nenhuma mensagem válida após filtrar tokens.');
     return;
   }
 
-  // 4) Enviar em lotes
+  // 5) Enviar em lotes
   const chunks = expo.chunkPushNotifications(messages);
   const tickets = [];
 
   for (const chunk of chunks) {
     try {
       const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-      console.log('Tickets de envio:', ticketChunk);
+      console.log('[PUSH] Tickets de envio:', ticketChunk);
       tickets.push(...ticketChunk);
     } catch (err) {
-      console.error('Erro ao enviar notificação:', err);
+      console.error('[PUSH] Erro ao enviar notificação:', err);
     }
   }
 
-  console.log('Envio de notificações finalizado.');
+  console.log('[PUSH] Envio de notificações finalizado.');
 }
 
-main().then(() => {
-  console.log('Worker concluído.');
-  process.exit(0);
-});
+main()
+  .then(() => {
+    console.log('[PUSH] Worker concluído.');
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('[PUSH] Erro inesperado no worker:', err);
+    process.exit(1);
+  });
