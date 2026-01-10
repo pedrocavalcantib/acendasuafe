@@ -6,14 +6,16 @@ import expoPkg from 'expo-server-sdk';
 const { Expo } = expoPkg;
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Faltam SUPABASE_URL ou SUPABASE_ANON_KEY nas env vars');
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error('Faltam SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY nas env vars');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: { persistSession: false },
+});
 const expo = new Expo();
 
 // --- Helpers de horário -----------------------------------------------------

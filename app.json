@@ -2,7 +2,7 @@
   "expo": {
     "name": "acenda-app",
     "slug": "acenda-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "acendaapp",
@@ -16,6 +16,8 @@
       }
     },
     "android": {
+      "package": "com.pedrocavalcantib.acendaapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
