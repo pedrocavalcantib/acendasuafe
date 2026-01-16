@@ -1,6 +1,7 @@
 // scripts/sendDailyReminders.mjs
 
 import { createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto'; // <- para gerar notificationId
 import expoPkg from 'expo-server-sdk';
 
 const { Expo } = expoPkg;
@@ -118,12 +119,36 @@ async function main() {
       continue;
     }
 
+    // Gera um ID único para essa notificação
+    const notificationId = randomUUID();
+
+    // Loga no Supabase em uma tabela push_logs
+    const { error: logError } = await supabase
+      .from('push_logs')
+      .insert({
+        id: notificationId,          // precisa existir na tabela
+        user_id: row.key,            // você pode ajustar o nome da coluna
+        type: 'daily_reminder',
+        sent_at: new Date().toISOString(),
+      });
+
+    if (logError) {
+      console.error('[PUSH] Erro ao salvar log de notificação:', logError);
+    } else {
+      console.log(
+        `[PUSH] Log de notificação salvo. user=${row.key}, notificationId=${notificationId}`
+      );
+    }
+
     messages.push({
       to: pushToken,
       sound: 'default',
       title: 'Seu momento com Deus ✨',
       body: 'Reserve um instante para sua reflexão espiritual de hoje.',
-      data: { type: 'daily_reminder' },
+      data: {
+        type: 'daily_reminder',
+        notificationId, // <- usado depois no app pra mandar OPEN
+      },
     });
   }
 
