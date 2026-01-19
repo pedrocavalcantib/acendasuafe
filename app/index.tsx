@@ -152,58 +152,100 @@ export default function HomeScreen() {
   } | null>(null);
   const webViewRef = useRef<WebView>(null);
 
-// [RC] Inicializa RevenueCat
-useEffect(() => {
-  const setupRevenueCat = async () => {
+  // [RC] Inicializa RevenueCat
+  useEffect(() => {
+    const setupRevenueCat = async () => {
+      try {
+        // Chaves reais por plataforma
+        const iosApiKey = 'appl_gOlGddmXJQjtWPKpSmyuKlvpiix';
+        const androidApiKey = 'goog_jsJwiQdBwYBIxchmSSpoabFUvPn';
+
+        Purchases.setLogLevel(LOG_LEVEL.VERBOSE); // ajuda no debug
+
+        await Purchases.configure({
+          apiKey: Platform.OS === 'ios' ? iosApiKey : androidApiKey,
+        });
+
+        console.log('[RC] RevenueCat configurado com sucesso');
+      } catch (err) {
+        console.log('[RC] Erro ao configurar RevenueCat:', err);
+      }
+    };
+
+    setupRevenueCat();
+  }, []);
+
+  const sendSubscriptionStatusToWeb = async () => {
+    if (!webViewRef.current) {
+      console.log('[SUBS][NATIVE] WebView ainda não está pronta pra receber status');
+      return;
+    }
+
     try {
-      // Chaves reais por plataforma
-      const iosApiKey = 'appl_gOlGddmXJQjtWPKpSmyuKlvpiix';
-      const androidApiKey = 'goog_jsJwiQdBwYBIxchmSSpoabFUvPn';
+      console.log('[SUBS][NATIVE] buscando customerInfo no RevenueCat...');
+      const info = await getCustomerInfo();
+      const status = getSubscriptionStatus(info);
 
-      Purchases.setLogLevel(LOG_LEVEL.VERBOSE); // ajuda no debug
+      console.log('[SUBS][NATIVE] status calculado:', status);
 
-      await Purchases.configure({
-        apiKey: Platform.OS === 'ios' ? iosApiKey : androidApiKey,
-      });
-
-      console.log('[RC] RevenueCat configurado com sucesso');
+      webViewRef.current.postMessage(
+        JSON.stringify({
+          type: 'SUBSCRIPTION_STATUS',
+          data: { status },
+        }),
+      );
     } catch (err) {
-      console.log('[RC] Erro ao configurar RevenueCat:', err);
+      console.log('[SUBS][NATIVE] erro ao buscar status de assinatura:', err);
+      webViewRef.current.postMessage(
+        JSON.stringify({
+          type: 'SUBSCRIPTION_STATUS',
+          data: { status: 'never', error: true },
+        }),
+      );
     }
   };
 
-  setupRevenueCat();
-}, []); // fim do useEffect de RC
+useEffect(() => {
+  console.log('[PUSH][OPEN] Registrando listener de abertura de notificação');
 
-const sendSubscriptionStatusToWeb = async () => {
-  if (!webViewRef.current) {
-    console.log('[SUBS][NATIVE] WebView ainda não está pronta pra receber status');
-    return;
-  }
+  const subscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      try {
+        const notif = response.notification;
+        const notificationId =
+          notif.request.content.data?.notificationId as string | undefined;
 
-  try {
-    console.log('[SUBS][NATIVE] buscando customerInfo no RevenueCat...');
-    const info = await getCustomerInfo();
-    const status = getSubscriptionStatus(info);
+        console.log('[PUSH][OPEN] Notificação aberta:', {
+          notificationId,
+          data: notif.request.content.data,
+        });
 
-    console.log('[SUBS][NATIVE] status calculado:', status);
+        if (!notificationId) {
+          console.log('[PUSH][OPEN] Sem notificationId, ignorando');
+          return;
+        }
 
-    webViewRef.current.postMessage(
-      JSON.stringify({
-        type: 'SUBSCRIPTION_STATUS',
-        data: { status },            // <── aqui muda
-      })
-    );
-  } catch (err) {
-    console.log('[SUBS][NATIVE] erro ao buscar status de assinatura:', err);
-    webViewRef.current.postMessage(
-      JSON.stringify({
-        type: 'SUBSCRIPTION_STATUS',
-        data: { status: 'never', error: true }, // fallback seguro
-      })
-    );
-  }
-};
+        if (!webViewRef.current) {
+          console.log('[PUSH][OPEN] WebView ainda não montada, não deu pra enviar');
+          return;
+        }
+
+        webViewRef.current.postMessage(
+          JSON.stringify({
+            type: 'PUSH_OPENED',
+            data: { notificationId },
+          }),
+        );
+      } catch (err) {
+        console.log('[PUSH][OPEN] Erro inesperado no listener:', err);
+      }
+    },
+  );
+
+  return () => {
+    subscription.remove();
+  };
+}, []);
 
   // 1) Listener da WebView: recebe o userId do app web
   // 1) Listener da WebView: recebe o userId e comandos do app web

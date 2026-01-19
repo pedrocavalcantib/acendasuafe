@@ -33,9 +33,10 @@
     "plugins": [
       "expo-router",
       [
-     "expo-splash-screen",{
-      "backgroundColor": "#ffffff",
-       "image": null
+      "expo-splash-screen",{
+        "image": "./assets/images/logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-notifications"
